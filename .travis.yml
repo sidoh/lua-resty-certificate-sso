@@ -17,8 +17,8 @@ branches:
   only:
     - master
 
-before_install:
+install:
   - source .travis/setenv_lua.sh
 
-install:
+script:
   - luarocks make rockspecs/lua-resty-certificate-sso-git-1.rockspec CFLAGS="-O2 -fPIC"
