@@ -6,7 +6,7 @@ fi
 
 tag="$TRAVIS_TAG"
 
-if [[ $str =~ ^v.*$ ]]; then
+if [[ $tag =~ ^v.*$ ]]; then
   tag="${tag:1}"
 fi
 

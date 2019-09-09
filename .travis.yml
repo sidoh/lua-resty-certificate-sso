@@ -24,7 +24,7 @@ jobs:
     - stage: deploy
       env:
         - LUA=lua5.1
-      script: source .travis/setenv_lua.sh
+      script: skip
       deploy:
         provider: script
         skip_cleanup: true
