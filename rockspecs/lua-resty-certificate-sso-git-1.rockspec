@@ -1,8 +1,7 @@
-package = "lua-certificate-sso"
-version = "0.0.1-1"
+package = "lua-resty-certificate-sso"
+version = "git-1"
 source = {
-  url = "https://github.com/sidoh/lua-certificate-sso",
-  tag = "v0.0.1"
+  url = "https://github.com/sidoh/lua-resty-certificate-sso"
 }
 description = {
   summary = "A library and recipe for enabling client certificate-based SSO using OpenResty",
@@ -13,7 +12,7 @@ description = {
     handle redirection to the SSO endpoint.  A JWT token will be issued, which will be
     used for authentication.
   ]],
-  homepage = "https://github.com/sidoh/lua-certificate-sso",
+  homepage = "https://github.com/sidoh/lua-resty-certificate-sso",
   license = "MIT" 
 }
 dependencies = {
