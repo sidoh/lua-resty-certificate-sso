@@ -12,10 +12,6 @@ env:
     - LUA=luajit     
     - LUA=luajit2.1  # current head of 2.1 branch
 
-branches:
-  only:
-    - master
-
 install:
   - source .travis/setenv_lua.sh
   - luarocks install dkjson
