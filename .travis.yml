@@ -18,6 +18,14 @@ branches:
 
 install:
   - source .travis/setenv_lua.sh
+  - luarocks install dkjson
 
 script:
   - luarocks make rockspecs/lua-resty-certificate-sso-git-1.rockspec CFLAGS="-O2 -fPIC"
+
+deploy:
+  provider: script
+  script: bash .travis/deploy.sh
+  on:
+    repo: sidoh/lua-resty-certificate-sso
+    tags: true
