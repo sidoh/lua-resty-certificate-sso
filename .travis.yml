@@ -19,9 +19,16 @@ install:
 script:
   - luarocks make rockspecs/lua-resty-certificate-sso-git-1.rockspec CFLAGS="-O2 -fPIC"
 
-deploy:
-  provider: script
-  script: bash .travis/deploy.sh
-  on:
-    repo: sidoh/lua-resty-certificate-sso
-    tags: true
+jobs:
+  include:
+    - stage: deploy
+      env:
+        - LUA=lua5.1
+      script: source .travis/setenv_lua.sh
+      deploy:
+        provider: script
+        skip_cleanup: true
+        script: bash .travis/deploy.sh
+        on:
+          repo: sidoh/lua-resty-certificate-sso
+          tags: true
