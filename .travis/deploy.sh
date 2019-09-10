@@ -10,4 +10,4 @@ if [[ $tag =~ ^v.*$ ]]; then
   tag="${tag:1}"
 fi
 
-luarocks upload "rockspecs/lua-resty-certificate-sso-${tag}-1.rockspec" --api-key "$LUAROCKS_API_KEY"
+luarocks upload "lua-resty-certificate-sso-${tag}-1.rockspec" --api-key "$LUAROCKS_API_KEY"
