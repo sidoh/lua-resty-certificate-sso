@@ -1,7 +1,7 @@
 package = "lua-resty-certificate-sso"
 version = "0.0.1-1"
 source = {
-  url = "https://github.com/sidoh/lua-resty-certificate-sso",
+  url = "git://github.com/sidoh/lua-resty-certificate-sso",
   tag = "v0.0.1"
 }
 description = {
@@ -25,6 +25,6 @@ dependencies = {
 build = {
   type = "builtin",
   modules = {
-    ["resty.certificate-sso"] = "lib/resty/certificate-sso.lua"
+    ["resty.certificate-sso"] = "../lib/resty/certificate-sso.lua"
   }
 }
