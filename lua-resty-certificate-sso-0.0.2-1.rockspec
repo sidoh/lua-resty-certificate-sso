@@ -1,8 +1,8 @@
 package = "lua-resty-certificate-sso"
-version = "0.0.1-1"
+version = "0.0.2-1"
 source = {
   url = "git://github.com/sidoh/lua-resty-certificate-sso",
-  tag = "v0.0.1"
+  tag = "v0.0.2"
 }
 description = {
   summary = "A library and recipe for enabling client certificate-based SSO using OpenResty",
@@ -25,6 +25,6 @@ dependencies = {
 build = {
   type = "builtin",
   modules = {
-    ["resty.certificate-sso"] = "../lib/resty/certificate-sso.lua"
+    ["resty.certificate-sso"] = "./lib/resty/certificate-sso.lua"
   }
 }
