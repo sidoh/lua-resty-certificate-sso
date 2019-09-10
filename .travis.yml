@@ -17,7 +17,7 @@ install:
   - luarocks install dkjson
 
 script:
-  - luarocks make rockspecs/lua-resty-certificate-sso-git-1.rockspec CFLAGS="-O2 -fPIC"
+  - luarocks make lua-resty-certificate-sso-git-1.rockspec CFLAGS="-O2 -fPIC"
 
 jobs:
   include:
