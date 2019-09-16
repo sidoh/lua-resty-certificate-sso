@@ -1,4 +1,4 @@
-# lua-resty-certificate-sso
+# lua-resty-certificate-sso [![Build Status](https://travis-ci.org/sidoh/lua-resty-certificate-sso.svg?branch=master)](https://travis-ci.org/sidoh/lua-resty-certificate-sso)
 A library for enabling a local client certificate-based SSO provider using [OpenResty](https://openresty.org/en/).
 
 ## Setup
