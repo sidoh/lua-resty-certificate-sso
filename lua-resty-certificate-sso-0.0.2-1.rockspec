@@ -14,12 +14,13 @@ description = {
     used for authentication.
   ]],
   homepage = "https://github.com/sidoh/lua-resty-certificate-sso",
-  license = "MIT" 
+  license = "MIT"
 }
 dependencies = {
   "lua >= 5.1, < 5.4",
   "lua-resty-http",
   "lua-resty-jwt",
+  "lua-resty-string >= 0.9",
   "net-url >= 0.9-1"
 }
 build = {
