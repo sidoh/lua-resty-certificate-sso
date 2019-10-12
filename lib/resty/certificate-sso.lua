@@ -3,6 +3,7 @@ local uri = require('net.url')
 local validators = require("resty.jwt-validators")
 local random = require "resty.random"
 local str = require "resty.string"
+local authorizer = require "resty.sso-authorizer"
 
 local _M = {}
 
@@ -21,7 +22,7 @@ local AuthStatus = {
 -- @return File contents as a string
 -- @raise Error if file couldn't be opened
 -- @local
-local function loadFile(path)
+local function load_file(path)
   local fh = io.open(path, 'r')
 
   assert(fh, "Could not open file: " .. path)
@@ -38,7 +39,7 @@ end
 -- @param default return this if field is not set
 -- @return value in table[field]
 -- @raise Error if table[field] is nil
-local function requireField(table, field, default)
+local function require_field(table, field, default)
   if table[field] == nil then
     if default == nil then
       error(string.format("`%s' is a required field", field))
@@ -56,8 +57,8 @@ end
 -- @param field
 -- @return table[field]
 -- @raise Error if table[field] is nil or is not a PEM-formatted string
-local function requirePemField(table, field)
-  local value = requireField(table, field)
+local function require_pem_field(table, field)
+  local value = require_field(table, field)
 
   if value:find("^-----BEGIN") then
     error(string.format("Expected a PEM string in %s, got: %s\n", field, value))
@@ -71,13 +72,13 @@ end
 -- @param table
 -- @param field
 -- @return table[field] or contents of table[field .. "_file"]
-local function requirePemFieldOrFile(table, field)
+local function require_pem_field_or_file(table, field)
   local file_field = string.format("%s_file", field)
 
   if table[file_field] then
-    return loadFile(table[file_field])
+    return load_file(table[file_field])
   else
-    return requirePemField(table, field)
+    return require_pem_field(table, field)
   end
 end
 
@@ -90,11 +91,13 @@ function _M.new(config)
 
   assert(config)
 
-  _config.cert = requirePemFieldOrFile(config, "cert")
-  _config.pub_key = requirePemFieldOrFile(config, "pub_key")
-  _config.private_key = requirePemFieldOrFile(config, "private_key")
-  _config.sso_endpoint = requireField(config, "sso_endpoint")
-  _config.audience_domain = requireField(config, "audience_domain")
+  local permissions = config.permissions or {}
+  local default_permissions = config.default_permissions or {"*"}
+
+  _config.pub_key = require_pem_field_or_file(config, "pub_key")
+  _config.private_key = require_pem_field_or_file(config, "private_key")
+  _config.sso_endpoint = require_field(config, "sso_endpoint")
+  _config.audience_domain = require_field(config, "audience_domain")
   _config.domain_pattern = string.format("^[a-zA-Z0-9.-]*.?%s$", _config.audience_domain)
 
   _config.ttl = config.ttl or 864000
@@ -106,13 +109,17 @@ function _M.new(config)
   _config.callback_endpoint = config.callback_endpoint or "/auth/callback"
   _config.authorize_endpoint = config.authorize_endpoint or "/auth/authorize"
   _config.cookie_name = config.cookie_name or "AccessToken"
-  _config.allow_custom_expiry = requireField(config, "allow_custom_expiry", true)
+  _config.allow_custom_expiry = require_field(config, "allow_custom_expiry", true)
 
   if not _config.payload_fields.iss then
     _config.payload_fields.iss = string.format("https://%s", _config.sso_endpoint)
   end
 
-  return setmetatable({ config = _config, tokens_by_auth_code = {} }, { __index = _M })
+  return setmetatable({
+    config = _config,
+    tokens_by_auth_code = {},
+    authorizer = authorizer.new(permissions, default_permissions)
+  }, { __index = _M })
 end
 
 --- Internal helper function to format a `Cookie` header string.
@@ -123,7 +130,7 @@ end
 -- @param expires Expiration date, should be a unix timestamp
 -- @return A formatted cookie header string
 -- @local
-local function formatCookie(key, value, audience, expires)
+local function format_cookie(key, value, audience, expires)
   return string.format(
     "%s=%s; Secure; HttpOnly; Path=/; Expires=%s; domain=%s",
     key,
@@ -138,7 +145,7 @@ end
 -- @param claims A table containing the JWT payload
 -- @return A signed JWT string
 -- @local
-function _M.generateSignedJwt(self, claims)
+function _M.generate_signed_jwt(self, claims)
   local jwt_payload = claims
   for k, v in pairs(self.config.payload_fields) do jwt_payload[k] = v end
 
@@ -168,7 +175,7 @@ end
 --
 -- @return A value from the AuthStatus table.
 -- @local
-local function authorizeRequest()
+local function authorize_request()
   if ngx.var.ssl_client_verify == 'SUCCESS' then
     return AuthStatus.SUCCESS
   else
@@ -188,7 +195,7 @@ end
 --
 -- @return a Table
 -- @local
-function _M.getRequestJwtClaims(self)
+function _M.get_request_jwt_claims(self)
   local audience_arg = ngx.var.arg_callback or ngx.var.arg_audience
 
   if (audience_arg == nil) then
@@ -226,9 +233,19 @@ function _M.getRequestJwtClaims(self)
       expires = expires + self.config.ttl
     end
 
+    local sub = ngx.var.ssl_client_serial
+    local email = (ngx.var.ssl_client_s_dn):match('emailAddress=([^,]+)')
+
+    if not self.authorizer:ids_are_authorized(audience.host, sub, email) then
+      ngx.log(ngx.ERR, "Refusing to generate claims for " .. audience.host .. ", unauthorized user: " .. sub)
+
+      ngx.header.content_type = 'text/plain'
+      return ngx.exit(ngx.HTTP_FORBIDDEN)
+    end
+
     return {
-      sub = ngx.var.ssl_client_serial,
-      email = (ngx.var.ssl_client_s_dn):match('emailAddress=([^,]+)'),
+      sub = sub,
+      email = email,
       aud = string.format("%s://%s", audience.scheme, audience.host),
       exp = expires
     }
@@ -241,7 +258,7 @@ end
 -- can be used by endpoints to verify a JWT.
 --
 -- @return nil
-function _M.handleServePublicKey(self)
+function _M.handle_serve_public_key(self)
   ngx.header.content_type = "application/x-pem-file"
   ngx.say(self.config.pub_key)
   ngx.exit(ngx.OK)
@@ -259,7 +276,7 @@ end
 --     will be issued a new token.
 --
 -- @return nil
-function _M.guardRequestWithAuth(self)
+function _M.guard_request_with_auth(self)
   -- We look for the cookie first in a cookie, then in an `Authorization`
   -- header.
   local token;
@@ -269,11 +286,11 @@ function _M.guardRequestWithAuth(self)
   if cookie then
     token = cookie
   elseif authHeader then
-    token = authHeader:match('Bearer:[ ]*(.*)')
+    token = authHeader:match('Bearer[ ]*(.*)')
   end
 
   local jwt_verify = jwt:verify(
-    self.config.cert,
+    self.config.pub_key,
     token,
     {
       exp = validators.is_not_expired(),
@@ -299,6 +316,9 @@ function _M.guardRequestWithAuth(self)
       self.config.authorize_endpoint,
       ngx.escape_uri(callback)
     ))
+  else
+    ngx.var.sso_subject = jwt_verify.payload.sub
+    ngx.var.sso_email = jwt_verify.payload.email
   end
 end
 
@@ -309,9 +329,9 @@ end
 -- unauthenticated client.
 --
 -- @return nil
-function _M.handleCallback(self)
+function _M.handle_callback(self)
   local auth_code = ngx.var.arg_auth_code
-  local status, ret = pcall(self.fetchTokenForAuthCode, self, auth_code)
+  local status, ret = pcall(self.fetch_token_for_auth_code, self, auth_code)
 
   if status then
     local token = ret
@@ -320,7 +340,7 @@ function _M.handleCallback(self)
     ngx.log(ngx.NOTICE, "Exchanged auth code for access token")
 
     ngx.header['Set-Cookie'] = {
-      formatCookie(self.config.cookie_name, token, ngx.var.http_host, claims.payload.exp)
+      format_cookie(self.config.cookie_name, token, ngx.var.http_host, claims.payload.exp)
     }
     return ngx.redirect(ngx.unescape_uri(ngx.var.arg_redirect))
   else
@@ -335,9 +355,9 @@ end
 -- body rather than setting it in a cookie.
 --
 -- @return nil
-function _M.handleAuthCodeExchange(self)
+function _M.handle_auth_code_exchange(self)
   local auth_code = ngx.var.arg_auth_code
-  local status, ret = pcall(self.fetchTokenForAuthCode, self, auth_code)
+  local status, ret = pcall(self.fetch_token_for_auth_code, self, auth_code)
 
   if status then
     ngx.header.content_type = 'application/json'
@@ -357,7 +377,7 @@ end
 --
 -- @param auth_code
 -- @return string
-function _M.fetchTokenForAuthCode(self, auth_code)
+function _M.fetch_token_for_auth_code(self, auth_code)
   if self.tokens_by_auth_code[auth_code] then
     local issued_token = self.tokens_by_auth_code[auth_code]
     self.tokens_by_auth_code[auth_code] = nil
@@ -379,10 +399,10 @@ end
 -- `callback` request parameter.
 --
 -- @return nil
-function _M.handleAuthorizeRequest(self)
-  if authorizeRequest() == AuthStatus.SUCCESS then
-    local claims = self:getRequestJwtClaims()
-    local jwt = self:generateSignedJwt(claims)
+function _M.handle_authorize_request(self)
+  if authorize_request() == AuthStatus.SUCCESS then
+    local claims = self:get_request_jwt_claims()
+    local jwt = self:generate_signed_jwt(claims)
 
     -- Generate an auth code and store the JWT.  User will exchange the code for
     -- the access token on callback, which will be set in the cookie.  This is
@@ -409,9 +429,9 @@ end
 -- and serve it directly in the response body.
 --
 -- @return nil
-function _M.handleGetToken(self)
-  if authorizeRequest() == AuthStatus.SUCCESS then
-    local token = self:generateSignedJwt(self:getRequestJwtClaims())
+function _M.handle_get_token(self)
+  if authorize_request() == AuthStatus.SUCCESS then
+    local token = self:generate_signed_jwt(self:get_request_jwt_claims())
 
     ngx.header.content_type = 'application/json'
     ngx.say(string.format('{"access_token":"%s"}', token))
